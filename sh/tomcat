@@ -1,25 +1,70 @@
-#!/bin/bash
-# description: Tomcat Start Stop Restart
-# processname: tomcat7
-# chkconfig: 234 20 80
+die () {
+    echo >&2 "$@"
+    exit 1
+}
+
+[ "$#" -eq 1 ] || die "1 argument required {qab | qaa | prod}, $# provided"
+
+env=$1
+
+echo "--STOPING TOMCAT"
+sudo service tomcat7 stop
+
+if [ $? != 0 ]; then
+ die "unable to stop tomcat"
+fi
+
+sleep 5
+
+echo "--BACKING UP rules_engine.war"
+backupdir=rules_engine_backups/`date +%Y%m%d`
+mkdir -p $backupdir
+sudo cp -r /var/lib/tomcat7/webapps/rules_engine $backupdir/
+if [ $? != 0 ]; then
+ die "unable to backup existing rules_engine webapp"
+fi
+
+echo "--CLEANING UP"
+sudo rm -rf /var/lib/tomcat7/webapps/rules_engine*
+if [ $? != 0 ]; then
+ die "unable to remove webapp files"
+fi
+
+sudo rm -rf /var/lib/tomcat7/work/Catalina/*
+if [ $? != 0 ]; then
+ die "unable to remove work files"
+fi
+
+sudo rm -f /var/log/tomcat7/*
+if [ $? != 0 ]; then
+ die "unable to remove logs"
+fi
 
 
-JAVA_HOME=/usr/java/jre1.7.0_21
-export JAVA_HOME
-PATH=$JAVA_HOME/bin:$PATH
-export PATH
-CATALINA_HOME=/usr/share/tomcat7
+echo "--INSTALLING NEW WAR"
+sudo mkdir -p /var/lib/tomcat7/webapps/rules_engine
+if [ $? != 0 ]; then
+ die "unable to create /var/lib/tomcat7/webapps/rules_engine"
+fi
 
-case $1 in
-start)
-sh $CATALINA_HOME/bin/startup.sh
-;; 
-stop)   
-sh $CATALINA_HOME/bin/shutdown.sh
-;; 
-restart)
-sh $CATALINA_HOME/bin/shutdown.sh
-sh $CATALINA_HOME/bin/startup.sh
-;; 
-esac    
-exit 0
+sudo unzip rules_engine-*.war -d /var/lib/tomcat7/webapps/rules_engine
+if [ $? != 0 ]; then
+ die "unable to deploy extract rules_engine.war"
+fi
+
+sudo cp /var/lib/tomcat7/webapps/rules_engine/WEB-INF/classes/beans.$env.xml /var/lib/tomcat7/webapps/rules_engine/WEB-INF/classes/beans.xml
+if [ $? != 0 ]; then
+ die "unable to setup beans.xml"
+fi
+
+sudo cp /var/lib/tomcat7/webapps/rules_engine/WEB-INF/classes/META-INF/persistence.$env.xml /var/lib/tomcat7/webapps/rules_engine/WEB-INF/classes/META-INF/persistence.xml
+if [ $? != 0 ]; then
+ die "unable to setup persistence.xml"
+fi
+
+echo "--STARTING TOMCAT"
+sudo service tomcat7 start
+if [ $? != 0 ]; then
+ die "unable to start tomcat"
+fi
+
